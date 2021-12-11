@@ -3,9 +3,9 @@
 #include "LinkedList.h"
 #include "PriorityQueue.h"
 
-
 struct PCB * pcbPointer=NULL;
 enum Status{Free, Busy};
+
 struct msgbuff
 {
     long mtype;
@@ -35,8 +35,8 @@ int main(int argc, char * argv[])
     signal(SIGUSR1,Handler);
     signal(SIGALRM, Alarm_Handler);
 
-    //Intialization
-    int rec_val;
+    //Definitions
+    int receive;
     int algorithmNo;
     int pcount;
     double sum_WTA=0;
@@ -47,12 +47,10 @@ int main(int argc, char * argv[])
     struct processData pData;
     struct PCB pcbBlock;
     struct node *pcbFind=NULL;
-    FILE * logFile;
-    FILE * prefFile;
     
-    //open the output files for write
-    logFile = fopen("scheduler.log", "w");
-    prefFile = fopen("scheduler.pref", "w");
+    //defining the output files for write
+    FILE *logFile = fopen("scheduler.log", "w");
+    FILE *prefFile = fopen("scheduler.pref", "w");
     
     fprintf(logFile, "\n#At time x process y state arr w total z remain y wait k\n");
     
@@ -61,8 +59,8 @@ int main(int argc, char * argv[])
     PQueue HPF_readyQueue;
     PQueueInit(&HPF_readyQueue);
     //SRTN
-    PQueue SRTN_Queue; 
-    PQueueInit(&SRTN_Queue);
+    PQueue SRTN_readyQueue; 
+    PQueueInit(&SRTN_readyQueue);
     //RR
     Queue RR_readyQueue;
     queueInit(&RR_readyQueue, sizeof(struct processData));
@@ -79,7 +77,7 @@ int main(int argc, char * argv[])
     {
         //HPF
         case 1:
-        rec_val= msgrcv(msgqid, &message, sizeof(message.mData), 0, !IPC_NOWAIT);
+        receive= msgrcv(msgqid, &message, sizeof(message.mData), 0, !IPC_NOWAIT);
         pData = message.mData;
         printf("\nTime = %d process with id = %d recieved\n", getClk(), pData.id);
         
@@ -95,8 +93,8 @@ int main(int argc, char * argv[])
         while (pcount!=0)
         {
             printf("\nCurrent time = %d", getClk());
-            rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
-            while (rec_val != -1)
+            receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
+            while (receive != -1)
             {
                 pData = message.mData;
                 printf("\nTime = %d process with id = %d recieved\n", getClk(), pData.id);
@@ -109,7 +107,7 @@ int main(int argc, char * argv[])
             
                 insertFirst(pData.id, pcbBlock);
                 printf("\nPCB created for process with id = %d\n", pData.id);
-                rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
+                receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
                 
             }
             pData=pop(&HPF_readyQueue);
@@ -165,57 +163,44 @@ int main(int argc, char * argv[])
         case 2:
 
         //Recieving the processes sent by the process generator
-        rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, !IPC_NOWAIT);
+        receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, !IPC_NOWAIT);
         printf("\nProcess with Pid = %d recieved\n",message.mData.id);
         pData = message.mData;
-        push(&SRTN_Queue, pData.runningtime, pData); //enqueue the data in the ready queue
-        if(rec_val!=-1)
+        push(&SRTN_readyQueue, pData.runningtime, pData); //enqueue the data in the ready queue
+        if(receive!=-1)
         {
- 
             //Creating PCB
             pcbBlock.state = 0;
-            
             pcbBlock.executionTime = 0;
-            
             pcbBlock.remainingTime = pData.runningtime;
-            
             pcbBlock.waitingTime = 0;
             
             insertFirst(pData.id, pcbBlock);
-            
             printf("\nPCB created for process with Pid = %d\n",pData.id);
         }
 
-        while(getlength(&SRTN_Queue)!=0)
+        while(getlength(&SRTN_readyQueue)!=0)
         {
-            rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
-            while(rec_val!=-1)
+            receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
+            while(receive!=-1)
             {
                 printf("\n Current time is: %d\n", getClk());
-                
                 printf("\nProcess with Pid = %d recieved\n",message.mData.id);
-                
                 pData = message.mData;
-                
-                push(&SRTN_Queue, pData.runningtime, pData);
+                push(&SRTN_readyQueue, pData.runningtime, pData);
             
-     
-                 //Creating PCB
+                //Creating PCB
                 pcbBlock.state = 0;
-                
                 pcbBlock.executionTime = 0;
-                
                 pcbBlock.remainingTime = pData.runningtime;
-                
-                pcbBlock.waitingTime = 0;
-                
+                pcbBlock.waitingTime = 0;   
                 insertFirst(pData.id, pcbBlock);
                 
                 printf("\nPCB created for process with Pid = %d\n",pData.id);
-                rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
+                receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
             }
 
-            pData = pop (&SRTN_Queue);
+            pData = pop (&SRTN_readyQueue);
             if(pData.id==-1){  //if the process is finished skip this iteration 
                 continue;
             }
@@ -234,40 +219,29 @@ int main(int argc, char * argv[])
                 if(pcbPointer->state!=Finished)
                 {
                     printf("\nThe process with Pid = %d is not finished yet \n",pcbPointer->pid);
-                    push(&SRTN_Queue,pcbPointer->remainingTime , pData);
+                    push(&SRTN_readyQueue,pcbPointer->remainingTime , pData);
                     //Update PCB
                     pcbPointer->executionTime+=1;
-                    
                     pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
-                    
                     pcbPointer->state=Waiting;
-                    
                     pcbPointer->remainingTime-=1;
                    
                     fprintf(logFile, "At time %d process %d stopped arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
-                     
                 }
                 else
                 {
                     pcbPointer->executionTime=pData.runningtime;
-
                     pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
-                    
-                    pcbPointer->remainingTime=0;
-                    
-                    int TA = getClk()-(pData.arrivaltime);
-                    
+                    pcbPointer->remainingTime=0;                    
+                    int TA = getClk()-(pData.arrivaltime);                    
                     double WTA=(double)TA/pData.runningtime;
-                    
+
                     fprintf(logFile, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", 
                         getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA,WTA);
                     
                     sum_WTA+=WTA;
-
                     sum_Waiting+=pcbPointer->waitingTime;
-
-                    sum_RunningTime+=pcbPointer->executionTime;
-                             
+                    sum_RunningTime+=pcbPointer->executionTime;                            
                     pData.id=-1;
                 }
             }    
@@ -278,8 +252,7 @@ int main(int argc, char * argv[])
                 int pid=fork();
                 pcbPointer->pid=pid;
                 if (pid == -1)
-                perror("error in forking");
-
+                    perror("error in forking");
                 else if (pid == 0)
                 {
                     printf("\ntesting the fork\n");
@@ -299,15 +272,11 @@ int main(int argc, char * argv[])
                 if(pcbPointer->state!=Finished)
                 {
                     printf("Not Finished\n");
-
-                    push (&SRTN_Queue, pcbPointer->remainingTime, pData);
+                    push (&SRTN_readyQueue, pcbPointer->remainingTime, pData);
 
                     pcbPointer->executionTime+=1;
-
                     pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
-
                     pcbPointer->state=Waiting;
-
                     pcbPointer->remainingTime-=1;
 
                     fprintf(logFile, "At time %d process %d stopped arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
@@ -315,24 +284,17 @@ int main(int argc, char * argv[])
                 else
                 {
                     pcbPointer->executionTime=pData.runningtime;
-
                     pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
-
                     pcbPointer->remainingTime=0;
-
                     int TA = getClk()-(pData.arrivaltime);
-
                     double WTA=(double)TA/pData.runningtime;
 
                     fprintf(logFile, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA, WTA);
+ 
                     sum_WTA+=WTA;
-
                     WTAArray[pData.id] = WTA;
-
                     sum_Waiting+=pcbPointer->waitingTime;
-
-                    sum_RunningTime+=pcbPointer->executionTime;
-       
+                    sum_RunningTime+=pcbPointer->executionTime;      
                     pData.id=-1;
                         
                 }
@@ -341,49 +303,53 @@ int main(int argc, char * argv[])
 
         break;
 
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
         //RR
         case 3:
-        //RR
-             rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, !IPC_NOWAIT);
-        printf("\nRecieved rec val is: %d \n",rec_val);
+        receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, !IPC_NOWAIT);
+        printf("\nRecieved rec val is: %d \n",receive);
         pData = message.mData;
         enqueue(&RR_readyQueue, &pData); //enqueue the data in the ready queue
         printf("\n%d %d %d %d\n",pData.id,pData.arrivaltime,pData.runningtime,pData.priority);
-        if(rec_val!=-1)
-            {
-
-                //Creating PCB
-                pcbBlock.state = 0;
-                pcbBlock.executionTime = 0;
-                pcbBlock.remainingTime = pData.runningtime;
-                pcbBlock.waitingTime = 0;
-                
-                insertFirst(pData.id, pcbBlock);
-                printf("\nPCB created\n");
-            }
+        if(receive!=-1)
+        {
+            //Creating PCB
+            pcbBlock.state = 0;
+            pcbBlock.executionTime = 0;
+            pcbBlock.remainingTime = pData.runningtime;
+            pcbBlock.waitingTime = 0;
+            
+            insertFirst(pData.id, pcbBlock);
+            printf("\nPCB created for process with Pid = %d\n",pData.id);
+        }
         
         while(getQueueSize(&RR_readyQueue)!=0 || pcount!=0)
         {   
-            rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
-            printf("from the rec_val at the end of the while loop %d\n",rec_val);
-            while(rec_val!=-1)
+            receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
+            printf("from the receive at the end of the while loop %d\n",receive);
+            while(receive!=-1)
             {
                 printf("\n Current time is: %d\n", getClk());
-                printf("\nRecieved rec val is: %d \n",rec_val);
+                printf("\nRecieved rec val is: %d \n",receive);
                 pData = message.mData;
                 enqueue(&RR_readyQueue, &pData);
                 printf("\n%d %d %d %d\n",pData.id,pData.arrivaltime,pData.runningtime,pData.priority);
-                
-                
+
                  //Creating PCB
                 pcbBlock.state = 0;
                 pcbBlock.executionTime = 0;
                 pcbBlock.remainingTime = pData.runningtime;
                 pcbBlock.waitingTime = 0;
-                
+
                 insertFirst(pData.id, pcbBlock);
                 printf("\nPCB created\n");
-                rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
+                receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
             }
             
             sscanf(argv[3], "%d", &quantum);
@@ -435,7 +401,6 @@ int main(int argc, char * argv[])
                     WTAArray[pData.id] = WTA;
                     sum_Waiting+=pcbPointer->waitingTime;
                     sum_RunningTime+=pcbPointer->executionTime;
-
                 }
                 
             }
@@ -468,7 +433,7 @@ int main(int argc, char * argv[])
                 
                 
                 alarm(quantum);
-                sleep(50);
+                sleep(500);
                 printf("\nCurrent time after alarm is: %d\n", getClk());
                 
                 //Update PCB
@@ -520,9 +485,10 @@ int main(int argc, char * argv[])
             }
            
         }
-
+    
+       
         break;
-        
+
 
 
     }
