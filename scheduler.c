@@ -343,6 +343,183 @@ int main(int argc, char * argv[])
         //RR
         case 3:
         //RR
+             rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, !IPC_NOWAIT);
+        printf("\nRecieved rec val is: %d \n",rec_val);
+        pData = message.mData;
+        enqueue(&RR_readyQueue, &pData); //enqueue the data in the ready queue
+        printf("\n%d %d %d %d\n",pData.id,pData.arrivaltime,pData.runningtime,pData.priority);
+        if(rec_val!=-1)
+            {
+
+                //Creating PCB
+                pcbBlock.state = 0;
+                pcbBlock.executionTime = 0;
+                pcbBlock.remainingTime = pData.runningtime;
+                pcbBlock.waitingTime = 0;
+                
+                insertFirst(pData.id, pcbBlock);
+                printf("\nPCB created\n");
+            }
+        
+        while(getQueueSize(&RR_readyQueue)!=0 || pcount!=0)
+        {   
+            rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
+            printf("from the rec_val at the end of the while loop %d\n",rec_val);
+            while(rec_val!=-1)
+            {
+                printf("\n Current time is: %d\n", getClk());
+                printf("\nRecieved rec val is: %d \n",rec_val);
+                pData = message.mData;
+                enqueue(&RR_readyQueue, &pData);
+                printf("\n%d %d %d %d\n",pData.id,pData.arrivaltime,pData.runningtime,pData.priority);
+                
+                
+                 //Creating PCB
+                pcbBlock.state = 0;
+                pcbBlock.executionTime = 0;
+                pcbBlock.remainingTime = pData.runningtime;
+                pcbBlock.waitingTime = 0;
+                
+                insertFirst(pData.id, pcbBlock);
+                printf("\nPCB created\n");
+                rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
+            }
+            
+            sscanf(argv[3], "%d", &quantum);
+            dequeue(&RR_readyQueue, &pData); //dequeue a process to run
+            if(pData.id==-1){  //if the process is finished skip this iteration 
+                continue;
+            }
+            printf("id is %d\n",pData.id);
+            //find the PCB of the dequeued process
+            pcbFind = find(pData.id);
+            pcbPointer = &(pcbFind->data);
+            printf("the state of the pcb i found is %d\n",pcbPointer->state);
+            
+            if(pcbPointer->state==Waiting)
+            {
+
+                pcbPointer->waitingTime = getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
+                sum_Waiting+=pcbPointer->waitingTime;
+                fprintf(logFile, "At time %d process %d resumed arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
+                ResumeProcess();
+                printf("\nCurrent time before alarm is: %d\n", getClk());
+                alarm(quantum);
+                sleep(50);
+                printf("\nCurrent time after alarm is: %d\n", getClk());
+
+                
+                if(pcbPointer->state!=Finished)
+                {
+                    enqueue(&RR_readyQueue,&pData);
+                    //Update PCB
+                    
+                    pcbPointer->executionTime+=quantum;
+                    pcbPointer->state=Waiting;
+                    pcbPointer->remainingTime-=quantum;
+                   
+                    fprintf(logFile, "At time %d process %d stopped arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
+                    
+                }
+                else
+                {
+                    pcbPointer->executionTime=pData.runningtime;
+                    pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
+                    pcbPointer->remainingTime=0;
+                    int TA = getClk()-(pData.arrivaltime);
+                    double WTA=(double)TA/pData.runningtime;
+                    fprintf(logFile, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", 
+                        getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA,WTA);
+                    sum_WTA+=WTA;
+                    WTAArray[pData.id] = WTA;
+                    sum_Waiting+=pcbPointer->waitingTime;
+                    sum_RunningTime+=pcbPointer->executionTime;
+
+                }
+                
+            }
+            else
+            {
+                //Fork the process
+                printf("\n I am forking a new process now\n");
+                int pid=fork();
+                pcount--;
+                pcbPointer->pid=pid;
+                if (pid == -1)
+                perror("error in fork");
+
+                else if (pid == 0)
+                {
+                    printf("\ntesting the fork\n");
+                    char buf[100];
+                    sprintf(buf,"%d",pData.runningtime);
+                    char *argv[] = { "./process.out",buf, 0 };
+                    execve(argv[0], &argv[0], NULL);
+                    
+                }
+                printf("I am setting the alarm for: %d \n",quantum);
+                t1=getClk();
+                printf("\nCurrent time before alarm is: %d\n", getClk());
+                if (pData.arrivaltime==getClk()) pcbPointer->waitingTime=0;
+                else pcbPointer->waitingTime = getClk()-pData.arrivaltime;
+
+                fprintf(logFile, "At time %d process %d started arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
+                
+                
+                alarm(quantum);
+                sleep(50);
+                printf("\nCurrent time after alarm is: %d\n", getClk());
+                
+                //Update PCB
+                
+                if(pcbPointer->state!=Finished)
+                {
+                    printf("Not Finished\n");
+                    enqueue(&RR_readyQueue,&pData);
+                    if (pcbPointer->remainingTime>quantum)
+                    {
+                        
+                        pcbPointer->executionTime+=quantum;
+                        pcbPointer->state=Waiting;
+                        pcbPointer->remainingTime-=quantum;
+                        fprintf(logFile, "At time %d process %d stopped arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
+                        
+                    }
+                    else 
+                    {
+                        pcbPointer->executionTime += pcbPointer->remainingTime;
+                        pcbPointer->remainingTime=0;
+                        int TA = getClk()-(pData.arrivaltime);
+                        double WTA=(double)TA/pData.runningtime;
+                        fprintf(logFile, "2At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", 
+                            getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA, WTA);
+                        sum_WTA+=WTA;
+                        WTAArray[pData.id] = WTA;
+                        sum_Waiting+=pcbPointer->waitingTime;
+                        sum_RunningTime+=pcbPointer->executionTime;
+
+                    }
+                    
+                }
+                else
+                {
+                    pcbPointer->executionTime=pData.runningtime;
+                    pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
+                    pcbPointer->remainingTime=0;
+                    int TA = getClk()-(pData.arrivaltime);
+                    double WTA=(double)TA/pData.runningtime;
+                    fprintf(logFile, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", 
+                        getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA, WTA);
+                    sum_WTA+=WTA;
+                    WTAArray[pData.id] = WTA;
+                    sum_Waiting+=pcbPointer->waitingTime;
+                    sum_RunningTime+=pcbPointer->executionTime;
+
+                }
+            }
+           
+        }
+
         break;
         
 
