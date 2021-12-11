@@ -21,11 +21,18 @@ void ResumeProcess()
     pcbPointer->state=Running;
 }
 
+void Alarm_Handler(int signum)
+{
+    printf("From the alarm handler\n");
+    kill(pcbPointer->pid,SIGSTOP);
+}
+
 
 int main(int argc, char * argv[])
 {
     initClk();
     signal(SIGUSR1,Handler);
+    signal(SIGALRM, Alarm_Handler);
 
     //Intialization
     int rec_val;
@@ -86,7 +93,7 @@ int main(int argc, char * argv[])
 
         while (pcount!=0)
         {
-            printf("\nCurrent time = %d\n", getClk());
+            printf("\nCurrent time = %d", getClk());
             rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
             while (rec_val != -1)
             {
@@ -145,40 +152,65 @@ int main(int argc, char * argv[])
 
         break;
 
+
+
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////        
         
+        
+
+
         //SRTN
         case 2:
+
+        //Recieving the processes sent by the process generator
         rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, !IPC_NOWAIT);
         printf("\nProcess with Pid = %d recieved\n",message.mData.id);
         pData = message.mData;
         push(&SRTN_Queue, pData.runningtime, pData); //enqueue the data in the ready queue
-
+        if(rec_val!=-1)
+        {
+ 
             //Creating PCB
             pcbBlock.state = 0;
+            
             pcbBlock.executionTime = 0;
+            
             pcbBlock.remainingTime = pData.runningtime;
+            
             pcbBlock.waitingTime = 0;
             
-            insertFirst(pData.id, pcbBlock);  
+            insertFirst(pData.id, pcbBlock);
+            
             printf("\nPCB created for process with Pid = %d\n",pData.id);
+        }
 
-        while(getlength(&SRTN_Queue)!=0 || pcount!=0)
+        while(getlength(&SRTN_Queue)!=0)
         {
             rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
             while(rec_val!=-1)
             {
+                printf("\n Current time is: %d\n", getClk());
+                
+                printf("\nProcess with Pid = %d recieved\n",message.mData.id);
+                
                 pData = message.mData;
-                printf("\nTime = %d process with id = %d recieved\n", getClk(), pData.id);
-                push(&HPF_readyQueue, pData.priority, pData); //enqueue the data in the ready queue
-                //Creating PCB
-                pcbBlock.state = 0;
-                pcbBlock.executionTime = 0;
-                pcbBlock.remainingTime = pData.runningtime;
-                pcbBlock.waitingTime = 0;
+                
+                push(&SRTN_Queue, pData.runningtime, pData);
             
+     
+                 //Creating PCB
+                pcbBlock.state = 0;
+                
+                pcbBlock.executionTime = 0;
+                
+                pcbBlock.remainingTime = pData.runningtime;
+                
+                pcbBlock.waitingTime = 0;
+                
                 insertFirst(pData.id, pcbBlock);
-                printf("\nPCB created for process with id = %d\n", pData.id);
+                
+                printf("\nPCB created for process with Pid = %d\n",pData.id);
                 rec_val = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
             }
 
@@ -189,17 +221,14 @@ int main(int argc, char * argv[])
             //find the PCB of the poped process
             pcbFind = find(pData.id);
             pcbPointer = &(pcbFind->data);
-            pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
-            // write in the output file the process data
-            fprintf(logFile, "At time %d process %d started arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
-
             
             if(pcbPointer->state == Waiting)
             {
                 fprintf(logFile, "At time %d process %d resumed arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
                 ResumeProcess();
                 printf("\nCurrent time is: %d\n", getClk());
-                sleep(1000);
+                alarm(1); 
+                sleep(50);
 
                 if(pcbPointer->state!=Finished)
                 {
@@ -237,7 +266,7 @@ int main(int argc, char * argv[])
                     sum_Waiting+=pcbPointer->waitingTime;
 
                     sum_RunningTime+=pcbPointer->executionTime;
-                    
+                             
                     pData.id=-1;
                 }
             }    
@@ -245,26 +274,26 @@ int main(int argc, char * argv[])
             {
                 //Fork the process
                 printf("\nIam forking a new process \n");
-                int pid1=fork();
-                pcbPointer->pid=pid1;
-                if (pid1 == -1)
-                    perror("error in forking");
+                int pid=fork();
+                pcbPointer->pid=pid;
+                if (pid == -1)
+                perror("error in forking");
 
-                else if (pid1 == 0)
+                else if (pid == 0)
                 {
                     printf("\ntesting the fork\n");
-                    char buf[20];
+                    char buf[100];
                     sprintf(buf,"%d",pData.runningtime);
                     char *argv[] = { "./process.out",buf, 0 };
                     execve(argv[0], &argv[0], NULL);
-                    pcbPointer->state=NotStarted;
                 }
 
                 pcount--;
                 pcbPointer->waitingTime=getClk()-(pData.arrivaltime);
                 printf("\nAt time %d process %d started arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
                 fprintf(logFile, "At time %d process %d started arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
-                sleep(1000);
+                alarm(1);
+                sleep(50);  
 
                 if(pcbPointer->state!=Finished)
                 {
@@ -294,8 +323,7 @@ int main(int argc, char * argv[])
 
                     double WTA=(double)TA/pData.runningtime;
 
-                    fprintf(logFile, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", 
-                        getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA, WTA);
+                    fprintf(logFile, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA, WTA);
                     sum_WTA+=WTA;
 
                     WTAArray[pData.id] = WTA;
@@ -303,7 +331,7 @@ int main(int argc, char * argv[])
                     sum_Waiting+=pcbPointer->waitingTime;
 
                     sum_RunningTime+=pcbPointer->executionTime;
-
+       
                     pData.id=-1;
                         
                 }
@@ -312,6 +340,7 @@ int main(int argc, char * argv[])
 
         break;
 
+        //RR
         case 3:
         //RR
         break;
