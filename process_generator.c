@@ -5,7 +5,7 @@
 #define null 0
 
 key_t msgqid;
-struct processData //define process data
+struct processData 
 {
     int arrivaltime;
     int priority;
@@ -19,25 +19,23 @@ struct msgbuff
     struct processData mData;
 };
 
-void clearResources(int); //function to clear ipc and clock recources
+void clearResources(int); 
 
 
 int main(int argc, char * argv[])
 {
     signal(SIGINT, clearResources);
-    //Initialization
-
-    FILE * pFile; //define a pointer to the file
+    
     struct processData pData;
-    int send_val;
+    int send;
     struct msgbuff message;
     msgqid = msgget(1000, IPC_CREAT | 0644); //create a message queue
-    //define the input queue
-    Queue Input_Queue;
-    queueInit(&Input_Queue,sizeof(struct processData));
+
+    Queue Input_Queue;  //defining the input queue
+    queueInit(&Input_Queue,sizeof(struct processData)); 
 
     // 1. Read the input files.
-    pFile = fopen("processes.txt", "r");
+    FILE *pFile = fopen("processes.txt", "r");
     while (!feof(pFile))
     {
         fscanf(pFile,"%d\t%d\t%d\t%d\n", &pData.id, &pData.arrivaltime, &pData.runningtime, &pData.priority);
@@ -68,8 +66,8 @@ int main(int argc, char * argv[])
         
         switch (algorithmNo)
         {
-            //HPF
-            case 1:
+            
+            case 1:     //HPF
             {
                 if (pid1 == -1)
                     perror("error in fork");
@@ -82,8 +80,8 @@ int main(int argc, char * argv[])
 
                 break;
             }
-            //SRTN
-            case 2:
+            
+            case 2:     //SRTN
             {
                 if (pid1 == -1)
                     perror("error in fork");
@@ -95,8 +93,8 @@ int main(int argc, char * argv[])
                 }
                 break;
             }
-            //RR
-            case 3:
+            
+            case 3:     //RR
             {
                 if (pid1 == -1)
                 perror("error in fork");
@@ -110,7 +108,7 @@ int main(int argc, char * argv[])
                 }
                 break;
             }
-            default:
+            default:    //if the user makes an input error
             {
                 error = 1;
                 printf("Input error, please try again...");
@@ -132,6 +130,7 @@ int main(int argc, char * argv[])
     }
 
     //4. Initializing clock
+
     initClk();
     
     if(msgqid == -1)
@@ -141,30 +140,30 @@ int main(int argc, char * argv[])
     }
     while(getQueueSize(&Input_Queue))
     {
-        int x = getClk();
+        int cTime= getClk();
         queuePeek(&Input_Queue,&pData); //peek the first entry in the input queue
         //send the process at the appropriate time.
-        while ((pData.arrivaltime<x)||(pData.arrivaltime==x))
+        while ((pData.arrivaltime<cTime)||(pData.arrivaltime==cTime))
         {
-        dequeue(&Input_Queue,&pData);
-        printf("current time is %d\n", x);
-        message.mtype = 7;     	/* arbitrary value */
-        //message.mData = pData;
-        message.mData.arrivaltime=pData.arrivaltime;
-        message.mData.id=pData.id;
-        message.mData.priority=pData.priority;
-        message.mData.runningtime=pData.runningtime;
-        send_val = msgsnd(msgqid, &message, sizeof(message.mData), IPC_NOWAIT);
+            dequeue(&Input_Queue,&pData);
+            printf("current time is %d\n", cTime);
+            message.mtype = 7;     	// arbitrary value 
+
+            message.mData.arrivaltime=pData.arrivaltime;
+            message.mData.id=pData.id;
+            message.mData.priority=pData.priority;
+            message.mData.runningtime=pData.runningtime;
+            send = msgsnd(msgqid, &message, sizeof(message.mData), IPC_NOWAIT);
         
-        //printf("\n%d %d %d %d\n",pData.id,pData.arrivaltime,pData.runningtime,pData.priority);
-        printf("\nprocess with id = %d sent\n", pData.id);
-        if(send_val == -1)
-            perror("Errror in send");
-        pData.arrivaltime=x+5;
-        queuePeek(&Input_Queue,&pData);
+
+            printf("\nprocess with id = %d sent\n", pData.id);
+            if(send == -1)
+                perror("Errror in send");
+            pData.arrivaltime = cTime+5;
+            queuePeek(&Input_Queue,&pData);
         }
     }
-    // 7. Wait for the scheduler to exit
+
     int status;
     int pid = wait(&status);
     if(!(status & 0x00FF))
@@ -176,6 +175,6 @@ int main(int argc, char * argv[])
 void clearResources(int signum)
 {
     //Clears all resources in case of interruption
-    msgctl(msgqid, IPC_RMID, (struct msqid_ds *) 0); 
+    msgctl(msgqid, IPC_RMID, (struct msqid_ds *) 0);
     exit(0);
 }
