@@ -11,7 +11,6 @@ struct processData //define process data
     int priority;
     int runningtime;
     int id;
-    int memsize;
 };
 
 struct msgbuff
@@ -55,16 +54,18 @@ int main(int argc, char * argv[])
     {
         printf("What scheduling algorithm do you want?\n 1- HPF\n 2- SRTN\n 3- RR\n ");
         scanf("%d", &algorithmNo);
+        printf("\n the choice is: %d\n",algorithmNo);
         char pCount[100];
         sprintf(pCount,"%d",getQueueSize(&Input_Queue));
         error = 0;
-        int pid1 = fork(); //fork the scheduler process
-        printf("\nPID1 is: %d\n",pid1);
         if(algorithmNo == 3)
         { 
             printf("Please Enter the quantum duration: \n");
             scanf("%d", &quantum);
         }
+        int pid1 = fork(); //fork the scheduler process
+        printf("\nPID1 is: %d\n",pid1);
+        
         switch (algorithmNo)
         {
             //HPF
@@ -102,7 +103,6 @@ int main(int argc, char * argv[])
 
                 else if (pid1 == 0)
                 {
-                    printf("\ntest case 2\n");
                     char buf[100];
                     sprintf(buf,"%d",quantum);
                     char *argv[] = { "./scheduler.out", "3",pCount,buf, 0 };
@@ -154,7 +154,6 @@ int main(int argc, char * argv[])
         message.mData.id=pData.id;
         message.mData.priority=pData.priority;
         message.mData.runningtime=pData.runningtime;
-        message.mData.memsize=pData.memsize;
         send_val = msgsnd(msgqid, &message, sizeof(message.mData), IPC_NOWAIT);
         
         //printf("\n%d %d %d %d\n",pData.id,pData.arrivaltime,pData.runningtime,pData.priority);
