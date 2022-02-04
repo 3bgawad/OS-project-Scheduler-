@@ -9,6 +9,7 @@ struct processData
     int priority;
     int runningtime;
     int id;
+    int sizeP;
 };
 
 int main(int argc, char * argv[])
@@ -31,7 +32,8 @@ int main(int argc, char * argv[])
         pData.arrivaltime += rand() % (11); //processes arrives in order
         pData.runningtime = rand() % (30);
         pData.priority = rand() % (11);
-        fprintf(pFile, "%d\t%d\t%d\t%d\n", pData.id, pData.arrivaltime, pData.runningtime, pData.priority);
+        pData.sizeP = rand() % (225) + 32;
+        fprintf(pFile, "%d\t%d\t%d\t%d\t%d\n", pData.id, pData.arrivaltime, pData.runningtime, pData.priority, pData.sizeP);
     }
     fclose(pFile);
 }
