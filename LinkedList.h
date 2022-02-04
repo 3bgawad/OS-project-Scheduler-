@@ -12,6 +12,7 @@ struct PCB
     int remainingTime;
     int waitingTime;
     int pid;
+    int mem_address;
   
 };
 //Nodes of the LinedList
