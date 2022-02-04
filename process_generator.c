@@ -11,6 +11,7 @@ struct processData
     int priority;
     int runningtime;
     int id;
+    int memsize;
 };
 
 struct msgbuff
@@ -38,9 +39,8 @@ int main(int argc, char * argv[])
     FILE *pFile = fopen("processes.txt", "r");
     while (!feof(pFile))
     {
-        fscanf(pFile,"%d\t%d\t%d\t%d\n", &pData.id, &pData.arrivaltime, &pData.runningtime, &pData.priority);
-        enqueue(&Input_Queue,&pData);
-        
+        fscanf(pFile,"%d\t%d\t%d\t%d\t%d\n", &pData.id, &pData.arrivaltime, &pData.runningtime, &pData.priority, &pData.memsize);
+        enqueue(&Input_Queue,&pData);   
     }
 
     // 2. Ask the user for the chosen scheduling algorithm and its parameters.
@@ -50,7 +50,7 @@ int main(int argc, char * argv[])
     int error;
     do
     {
-        printf("What scheduling algorithm do you want?\n 1- HPF\n 2- SRTN\n 3- RR\n ");
+        printf("What scheduling algorithm do you want?\n 1- HPF\n 2- SRTN\n 3- RR\n 4- SJF\n ");
         scanf("%d", &algorithmNo);
         printf("\n the choice is: %d\n",algorithmNo);
         char pCount[100];
@@ -108,6 +108,21 @@ int main(int argc, char * argv[])
                 }
                 break;
             }
+
+            case 4:
+            {
+                if (pid1 == -1)
+                    perror("error in fork");
+
+                else if (pid1 == 0)
+                {
+                    char *argv[] = { "./scheduler.out","4", pCount, 0 };
+                    execve(argv[0], &argv[0], NULL); //run the scheduler
+                }
+
+                break;
+            }
+
             default:    //if the user makes an input error
             {
                 error = 1;
@@ -148,18 +163,14 @@ int main(int argc, char * argv[])
             dequeue(&Input_Queue,&pData);
             printf("current time is %d\n", cTime);
             message.mtype = 7;     	// arbitrary value 
-
-            message.mData.arrivaltime=pData.arrivaltime;
-            message.mData.id=pData.id;
-            message.mData.priority=pData.priority;
-            message.mData.runningtime=pData.runningtime;
+            message.mData = pData;
             send = msgsnd(msgqid, &message, sizeof(message.mData), IPC_NOWAIT);
-        
-
+            
+            
             printf("\nprocess with id = %d sent\n", pData.id);
             if(send == -1)
-                perror("Errror in send");
-            pData.arrivaltime = cTime+5;
+                perror("Errror in send process");
+            pData.arrivaltime=cTime+5;
             queuePeek(&Input_Queue,&pData);
         }
     }
