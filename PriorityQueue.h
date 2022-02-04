@@ -22,7 +22,7 @@ typedef struct {
     int length;
 } PQueue;
  
-//Initialize the priority queue
+//Initialize the Priority Queue
 void PQueueInit(PQueue *q)
 {
    q->length = 0;
