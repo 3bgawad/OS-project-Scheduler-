@@ -13,10 +13,16 @@ int Allocate_memory(int size);
 //memory management arrays creation 
 //Initially the memory is divided into 4 partitions each have 256 bytes
 //The values stored in the array refears to block's starting address in memory
+int blocks_1[1024];
+int blocks_2[512];
+int blocks_4[256];
+int blocks_8[128];
+int blocks_16[64];
 int blocks_32[32];
 int blocks_64[16];
 int blocks_128[8];
 int blocks_256[4] = {0, 256, 512, 768};
+
 
 struct msgbuff
 {
@@ -40,6 +46,44 @@ void Alarm_Handler(int signum)
     kill(pcbPointer->pid,SIGSTOP);
 }
 
+
+void createPCB(struct PCB pcb, struct processData pd){
+
+        // for pcb block
+        pcb.state = 0;
+        pcb.executionTime = 0;
+        pcb.remainingTime = pd.runningtime;
+        pcb.waitingTime = 0;
+        insertFirst(pd.id, pcb);
+        printf("\nPCB was created for process with id = %d\n", pd.id);
+}
+
+double updatepcbpointer(struct processData pd,FILE *log)
+{
+ pcbPointer->executionTime=pd.runningtime;
+ pcbPointer->waitingTime=getClk()-(pd.arrivaltime)-(pcbPointer->executionTime);
+ pcbPointer->state=Finished;
+ pcbPointer->remainingTime=0;
+ int TA = getClk()-(pd.arrivaltime);
+ double WTA=(double)TA/pd.runningtime;
+ fprintf(log, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", getClk(), pd.id, pd.arrivaltime, pd.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA, WTA);
+ return WTA;
+}
+
+void testfork(struct processData pd)
+{
+    printf("\ntest the forking\n");
+                char buf[20];
+                sprintf(buf,"%d",pd.runningtime);
+                char *argv[] = { "./process.out",buf, 0 };
+                execve(argv[0], &argv[0], NULL);
+}
+void Findpcb(struct node *pfind,struct processData pd)
+{
+     pfind = find(pd.id);
+            pcbPointer = &(pfind->data);
+            pcbPointer->waitingTime=getClk()-(pd.arrivaltime)-(pcbPointer->executionTime);
+}
 
 int main(int argc, char * argv[])
 {
@@ -68,12 +112,22 @@ int main(int argc, char * argv[])
     fprintf(logFile, "\n#At time x process y state arr w total z remain y wait k\n");
 
     //Initialize for memory blocks all other arrays with -1
+    for (int i = 0; i < 1024; i++)
+        blocks_1[i] = -1;
+    for (int i = 0; i < 512; i++)
+        blocks_2[i] = -1;
+    for (int i = 0; i < 256; i++)
+        blocks_4[i] = -1;
+    for (int i = 0; i < 128; i++)
+        blocks_8[i] = -1;
     for (int i = 0; i < 32; i++)
-        blocks_32[i]=-1;
+        blocks_16[i] = -1;
+    for (int i = 0; i < 32; i++)
+        blocks_32[i] = -1;
     for (int i = 0; i < 16; i++)
-        blocks_64[i]=-1;
+        blocks_64[i] = -1;
     for (int i = 0; i < 8; i++)
-        blocks_128[i]=-1;
+        blocks_128[i] = -1;
 
     fprintf(sizeP, "\n#At time x allocated y bytes for process z from i to j\n");
     fprintf(logFile, "\n#At time x process y state arr w total z remain y wait k\n");
@@ -110,12 +164,7 @@ int main(int argc, char * argv[])
         
         push(&HPF_readyQueue, pData.priority, pData);
         
-        pcbBlock.state = 0;
-        pcbBlock.executionTime = 0;
-        pcbBlock.remainingTime = pData.runningtime;
-        pcbBlock.waitingTime = 0;
-        insertFirst(pData.id, pcbBlock);
-        printf("\nPCB created for process with id = %d\n", pData.id);
+                createPCB(pcbBlock, pData);
 
         while (pcount!=0)
         {
@@ -140,9 +189,7 @@ int main(int argc, char * argv[])
             }
             pData=pop(&HPF_readyQueue);
             //find the pcb of the deueued process
-            pcbFind = find(pData.id);
-            pcbPointer = &(pcbFind->data);
-            pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
+            Findpcb(pcbFind,pData);
             // write in the output file the process data
             fprintf(logFile, "At time %d process %d started arr %d total %d remain %d wait %d\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime);
 
@@ -156,21 +203,11 @@ int main(int argc, char * argv[])
 
             else if (pid == 0)
             {
-                printf("\ntest the forking\n");
-                char buf[20];
-                sprintf(buf,"%d",pData.runningtime);
-                char *argv[] = { "./process.out",buf, 0 };
-                execve(argv[0], &argv[0], NULL);
+                                testfork(pData);
             }
             sleep(1000);
             //Update pcb and calculate the process data after finishing it
-            pcbPointer->executionTime=pData.runningtime;    
-            pcbPointer->waitingTime=getClk()-(pData.arrivaltime)-(pcbPointer->executionTime);
-            pcbPointer->state=Finished;
-            pcbPointer->remainingTime=0;
-            int TA = getClk()-(pData.arrivaltime);
-            double WTA=(double)TA/pData.runningtime;
-            fprintf(logFile, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n", getClk(), pData.id, pData.arrivaltime, pData.runningtime, pcbPointer->remainingTime, pcbPointer->waitingTime, TA, WTA);
+            double WTA=updatepcbpointer(pData,logFile);
             sum_WTA+=WTA;
             WTAArray[pData.id] = WTA;
             sum_Waiting+=pcbPointer->waitingTime;
@@ -198,6 +235,7 @@ int main(int argc, char * argv[])
         if(receive!=-1)
         {
             //Creating PCB
+            /*
             pcbBlock.state = 0;
             pcbBlock.executionTime = 0;
             pcbBlock.remainingTime = pData.runningtime;
@@ -205,6 +243,9 @@ int main(int argc, char * argv[])
             
             insertFirst(pData.id, pcbBlock);
             printf("\nPCB created for process with Pid = %d\n",pData.id);
+            */
+                           createPCB(pcbBlock, pData);
+
         }
 
         while(getlength(&SRTN_readyQueue)!=0)
@@ -218,13 +259,8 @@ int main(int argc, char * argv[])
                 push(&SRTN_readyQueue, pData.runningtime, pData);
             
                 //Creating PCB
-                pcbBlock.state = 0;
-                pcbBlock.executionTime = 0;
-                pcbBlock.remainingTime = pData.runningtime;
-                pcbBlock.waitingTime = 0;   
-                insertFirst(pData.id, pcbBlock);
-                
-                printf("\nPCB created for process with Pid = %d\n",pData.id);
+                createPCB(pcbBlock, pData);
+
                 receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
             }
 
@@ -355,13 +391,8 @@ int main(int argc, char * argv[])
 
 
                 //Creating PCB
-                pcbBlock.state = 0;
-                pcbBlock.executionTime = 0;
-                pcbBlock.remainingTime = pData.runningtime;
-                pcbBlock.waitingTime = 0;
-                pcbBlock.mem_address=address;
-                insertFirst(pData.id, pcbBlock);
-                printf("\nPCB created\n");
+                createPCB(pcbBlock, pData);
+
             }
         
         while(getQueueSize(&RR_readyQueue)!=0 || pcount!=0)
@@ -383,13 +414,8 @@ int main(int argc, char * argv[])
                 fprintf(sizeP, "\nAt time %d allocated %d bytes for process %d from %d to %d\n", getClk(), pData.sizeP, pData.id, address,address+size-1);
 
                  //Creating PCB
-                pcbBlock.state = 0;
-                pcbBlock.executionTime = 0;
-                pcbBlock.remainingTime = pData.runningtime;
-                pcbBlock.waitingTime = 0;
-                pcbBlock.mem_address=address;
-                insertFirst(pData.id, pcbBlock);
-                printf("\nPCB created\n");
+                createPCB(pcbBlock, pData);
+
                 receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
             }
             
@@ -569,13 +595,8 @@ int main(int argc, char * argv[])
         fprintf(sizeP, "\nAt time %d allocated %d bytes for process %d from %d to %d\n", getClk(), pData.sizeP, pData.id, address,address+size);
 
         //Create PCB
-        pcbBlock.state = 0;
-        pcbBlock.executionTime = 0;
-        pcbBlock.remainingTime = pData.runningtime;
-        pcbBlock.waitingTime = 0;
-        pcbBlock.mem_address = address;
-        insertFirst(pData.id, pcbBlock);
-        printf("\nPCB created for process with id = %d\n", pData.id);
+        createPCB(pcbBlock, pData);
+
 
         while (pcount!=0)
         {
@@ -593,14 +614,8 @@ int main(int argc, char * argv[])
                 fprintf(sizeP, "\nAt time %d allocated %d bytes for process %d from %d to %d\n", getClk(), pData.sizeP, pData.id, address,address+size);
 
                 //Creating PCB
-                pcbBlock.state = 0;
-                pcbBlock.executionTime = 0;
-                pcbBlock.remainingTime = pData.runningtime;
-                pcbBlock.waitingTime = 0;
-                pcbBlock.mem_address = address;
-            
-                insertFirst(pData.id, pcbBlock);
-                printf("\nPCB created for process with id = %d\n", pData.id);
+                createPCB(pcbBlock, pData);
+
                 receive = msgrcv(msgqid, &message, sizeof(message.mData), 0, IPC_NOWAIT);
                 
             }
@@ -688,7 +703,1064 @@ void Handler(int signum)
         }
     }
 }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+int Allocate_memory(int size)
+{
+    if (size == 1)
+    {
+        for (int i = 0; i < 1024; ++i)
+        {
+            if (blocks_1[i] != -1)
+            {
+                blocks_1[i] = -1;
+                return i * size;
+            }
+        }
+        for (int i = 0; i < 512; ++i)
+        {
+            if (blocks_2[i] != -1)
+            {
+                blocks_1[2 * i + 1] = (2 * i + 1) * size;
+                blocks_2[i] = -1;
+                return (2 * i) * size;
+            }
+        }
 
+        for (int i = 0; i < 256; ++i)
+        {
+            if (blocks_4[i] != -1)
+            {
+                blocks_1[4 * i + 1] = (4 * i + 1) * size;
+                blocks_2[2 * i + 1] = (2 * i + 1) * 2 * size;
+                blocks_4[i] = -1;
+                return (4 * i) * size;
+            }
+        }
+        for (int i = 0; i < 128; ++i)
+        {
+            if (blocks_8[i] != -1)
+            {
+                blocks_1[8 * i + 1] = (8 * i + 1) * size;
+                blocks_2[4 * i + 1] = (4 * i + 1) * 2 * size;
+                blocks_4[2 * i + 1] = (2 * i + 1) * 4 * size;
+                blocks_8[i] = -1;
+                return (8 * i) * size;
+            }
+        }
+        for (int i = 0; i < 64; ++i)
+        {
+            if (blocks_16[i] != -1)
+            {
+                blocks_1[16 * i + 1] = (16 * i + 1) * size;
+                blocks_2[8 * i + 1] = (8 * i + 1) * 2 * size;
+                blocks_4[4 * i + 1] = (4 * i + 1) * 4 * size;
+                blocks_8[2 * i + 1] = (2 * i + 1) * 8 * size;
+                blocks_16[i] = -1;
+                return (16 * i) * size;
+            }
+        }
+        for (int i = 0; i < 32; ++i)
+        {
+            if (blocks_32[i] != -1)
+            {
+                blocks_1[32 * i + 1] = (32 * i + 1) * size;
+                blocks_2[16 * i + 1] = (16 * i + 1) * 2 * size;
+                blocks_4[16 * i + 1] = (8 * i + 1) * 4 * size;
+                blocks_8[16 * i + 1] = (4 * i + 1) * 8 * size;
+                blocks_16[16 * i + 1] = (2 * i + 1) * 16 * size;
+                blocks_32[i] = -1;
+                return (32 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 16; ++i)
+        {
+            if (blocks_64[i] != -1)
+            {
+                blocks_1[64 * i + 1] = (64 * i + 1) * size;
+                blocks_2[32 * i + 1] = (32 * i + 1) * 2 * size;
+                blocks_4[16 * i + 1] = (16 * i + 1) * 4 * size;
+                blocks_8[8 * i + 1] = (8 * i + 1) * 8 * size;
+                blocks_16[4 * i + 1] = (4 * i + 1) * 16 * size;
+                blocks_32[2 * i + 1] = (2 * i + 1) * 32 * size;
+                blocks_64[i] = -1;
+                return (64 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 8; ++i)
+        {
+            if (blocks_128[i] != -1)
+            {
+                blocks_1[128 * i + 1] = (128 * i + 1) * size;
+                blocks_2[64 * i + 1] = (64 * i + 1) * 2 * size;
+                blocks_4[32 * i + 1] = (32 * i + 1) * 4 * size;
+                blocks_8[16 * i + 1] = (16 * i + 1) * 8 * size;
+                blocks_16[8 * i + 1] = (8 * i + 1) * 16 * size;
+                blocks_32[4 * i + 1] = (4 * i + 1) * 32 * size;
+                blocks_64[2 * i + 1] = (2 * i + 1) * 64 * size;
+                blocks_128[i] = -1;
+                return (128 * i) * size;
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            if (blocks_256[i] != -1)
+            {
+                blocks_1[256 * i + 1] = (256 * i + 1) * size;
+                blocks_2[128 * i + 1] = (128 * i + 1) * 2 * size;
+                blocks_4[64 * i + 1] = (64 * i + 1) * 4 * size;
+                blocks_8[32 * i + 1] = (32 * i + 1) * 8 * size;
+                blocks_16[16 * i + 1] = (16 * i + 1) * 16 * size;
+                blocks_32[8 * i + 1] = (8 * i + 1) * 32 * size;
+                blocks_64[4 * i + 1] = (4 * i + 1) * 64 * size;
+                blocks_64[2 * i + 1] = (2 * i + 1) * 128 * size;
+                blocks_256[i] = -1;
+                return (256 * i) * size;
+            }
+        }
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+    else if (size == 2)
+    {
+        for (int i = 0; i < 512; ++i)
+        {
+            if (blocks_2[i] != -1)
+            {
+                blocks_2[i] = -1;
+                return i * size;
+            }
+        }
+
+        for (int i = 0; i < 256; ++i)
+        {
+            if (blocks_4[i] != -1)
+            {
+                blocks_2[2 * i + 1] = (2 * i + 1) * size;
+                blocks_4[i] = -1;
+                return (2 * i) * size;
+            }
+        }
+        for (int i = 0; i < 128; ++i)
+        {
+            if (blocks_8[i] != -1)
+            {
+                blocks_2[4 * i + 1] = (4 * i + 1) * size;
+                blocks_4[2 * i + 1] = (2 * i + 1) * 2 * size;
+                blocks_8[i] = -1;
+                return (4 * i) * size;
+            }
+        }
+        for (int i = 0; i < 64; ++i)
+        {
+            if (blocks_16[i] != -1)
+            {
+                blocks_2[8 * i + 1] = (8 * i + 1) * size;
+                blocks_4[4 * i + 1] = (4 * i + 1) * 2 * size;
+                blocks_8[2 * i + 1] = (2 * i + 1) * 4 * size;
+                blocks_16[i] = -1;
+                return (8 * i) * size;
+            }
+        }
+        for (int i = 0; i < 32; ++i)
+        {
+            if (blocks_32[i] != -1)
+            {
+                blocks_2[16 * i + 1] = (16 * i + 1) * size;
+                blocks_4[8 * i + 1] = (8 * i + 1) * 2 * size;
+                blocks_8[4 * i + 1] = (4 * i + 1) * 4 * size;
+                blocks_16[2 * i + 1] = (2 * i + 1) * 8 * size;
+                blocks_32[i] = -1;
+                return (16 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 16; ++i)
+        {
+            if (blocks_64[i] != -1)
+            {
+                blocks_2[32 * i + 1] = (32 * i + 1) * size;
+                blocks_4[16 * i + 1] = (16 * i + 1) * 2 * size;
+                blocks_8[16 * i + 1] = (8 * i + 1) * 4 * size;
+                blocks_16[16 * i + 1] = (4 * i + 1) * 8 * size;
+                blocks_32[16 * i + 1] = (2 * i + 1) * 16 * size;
+                blocks_64[i] = -1;
+                return (32 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 8; ++i)
+        {
+            if (blocks_128[i] != -1)
+            {
+                blocks_2[64 * i + 1] = (64 * i + 1) * size;
+                blocks_4[32 * i + 1] = (32 * i + 1) * 2 * size;
+                blocks_8[16 * i + 1] = (16 * i + 1) * 4 * size;
+                blocks_16[8 * i + 1] = (8 * i + 1) * 8 * size;
+                blocks_32[4 * i + 1] = (4 * i + 1) * 16 * size;
+                blocks_64[2 * i + 1] = (2 * i + 1) * 32 * size;
+                blocks_128[i] = -1;
+                return (64 * i) * size;
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            if (blocks_256[i] != -1)
+            {
+                blocks_2[128 * i + 1] = (128 * i + 1) * size;
+                blocks_4[64 * i + 1] = (64 * i + 1) * 2 * size;
+                blocks_8[32 * i + 1] = (32 * i + 1) * 4 * size;
+                blocks_16[16 * i + 1] = (16 * i + 1) * 8 * size;
+                blocks_32[8 * i + 1] = (8 * i + 1) * 16 * size;
+                blocks_64[4 * i + 1] = (4 * i + 1) * 32 * size;
+                blocks_128[2 * i + 1] = (2 * i + 1) * 64 * size;
+                blocks_256[i] = -1;
+                return (128 * i) * size;
+            }
+        }
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+    else if (size == 4)
+    {
+        for (int i = 0; i < 256; ++i)
+        {
+            if (blocks_4[i] != -1)
+            {
+                blocks_4[i] = -1;
+                return i * size;
+            }
+        }
+        for (int i = 0; i < 128; ++i)
+        {
+            if (blocks_8[i] != -1)
+            {
+                blocks_4[2 * i + 1] = (2 * i + 1) * size;
+                blocks_8[i] = -1;
+                return (2 * i) * size;
+            }
+        }
+        for (int i = 0; i < 64; ++i)
+        {
+            if (blocks_16[i] != -1)
+            {
+                blocks_4[4 * i + 1] = (4 * i + 1) * size;
+                blocks_8[2 * i + 1] = (2 * i + 1) * 2 * size;
+                blocks_16[i] = -1;
+                return (4 * i) * size;
+            }
+        }
+        for (int i = 0; i < 32; ++i)
+        {
+            if (blocks_32[i] != -1)
+            {
+                blocks_4[8 * i + 1] = (8 * i + 1) * size;
+                blocks_8[4 * i + 1] = (4 * i + 1) * 2 * size;
+                blocks_16[2 * i + 1] = (2 * i + 1) * 4 * size;
+                blocks_32[i] = -1;
+                return (8 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 16; ++i)
+        {
+            if (blocks_64[i] != -1)
+            {
+                blocks_4[16 * i + 1] = (16 * i + 1) * size;
+                blocks_8[8 * i + 1] = (8 * i + 1) * 2 * size;
+                blocks_16[4 * i + 1] = (4 * i + 1) * 4 * size;
+                blocks_32[2 * i + 1] = (2 * i + 1) * 8 * size;
+                blocks_64[i] = -1;
+                return (16 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 8; ++i)
+        {
+            if (blocks_128[i] != -1)
+            {
+                blocks_4[32 * i + 1] = (32 * i + 1) * size;
+                blocks_8[16 * i + 1] = (16 * i + 1) * 2 * size;
+                blocks_16[16 * i + 1] = (8 * i + 1) * 4 * size;
+                blocks_32[16 * i + 1] = (4 * i + 1) * 8 * size;
+                blocks_64[16 * i + 1] = (2 * i + 1) * 16 * size;
+                blocks_128[i] = -1;
+                return (32 * i) * size;
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            if (blocks_256[i] != -1)
+            {
+                blocks_4[64 * i + 1] = (64 * i + 1) * size;
+                blocks_8[32 * i + 1] = (32 * i + 1) * 2 * size;
+                blocks_16[16 * i + 1] = (16 * i + 1) * 4 * size;
+                blocks_32[8 * i + 1] = (8 * i + 1) * 8 * size;
+                blocks_64[4 * i + 1] = (4 * i + 1) * 16 * size;
+                blocks_128[2 * i + 1] = (2 * i + 1) * 32 * size;
+                blocks_256[i] = -1;
+                return (64 * i) * size;
+            }
+        }
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+    else if (size == 8)
+    {
+        for (int i = 0; i < 128; ++i)
+        {
+            if (blocks_8[i] != -1)
+            {
+                blocks_8[i] = -1;
+                return i * size;
+            }
+        }
+        for (int i = 0; i < 64; ++i)
+        {
+            if (blocks_16[i] != -1)
+            {
+                blocks_8[2 * i + 1] = (2 * i + 1) * size;
+                blocks_16[i] = -1;
+                return (2 * i) * size;
+            }
+        }
+        for (int i = 0; i < 32; ++i)
+        {
+            if (blocks_32[i] != -1)
+            {
+                blocks_8[4 * i + 1] = (4 * i + 1) * size;
+                blocks_16[2 * i + 1] = (2 * i + 1) * 2 * size;
+                blocks_32[i] = -1;
+                return (4 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 16; ++i)
+        {
+            if (blocks_64[i] != -1)
+            {
+                blocks_8[8 * i + 1] = (8 * i + 1) * size;
+                blocks_16[4 * i + 1] = (4 * i + 1) * 2 * size;
+                blocks_32[2 * i + 1] = (2 * i + 1) * 4 * size;
+                blocks_64[i] = -1;
+                return (8 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 8; ++i)
+        {
+            if (blocks_128[i] != -1)
+            {
+                blocks_8[16 * i + 1] = (16 * i + 1) * size;
+                blocks_16[8 * i + 1] = (8 * i + 1) * 2 * size;
+                blocks_32[4 * i + 1] = (4 * i + 1) * 4 * size;
+                blocks_64[2 * i + 1] = (2 * i + 1) * 8 * size;
+                blocks_128[i] = -1;
+                return (16 * 1) * size;
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            if (blocks_256[i] != -1)
+            {
+                blocks_8[32 * i + 1] = (32 * i + 1) * size;
+                blocks_16[16 * i + 1] = (16 * i + 1) * 2 * size;
+                blocks_32[8 * i + 1] = (8 * i + 1) * 4 * size;
+                blocks_64[4 * i + 1] = (4 * i + 1) * 8 * size;
+                blocks_128[2 * i + 1] = (2 * i + 1) * 16 * size;
+                blocks_256[i] = -1;
+                return (32 * 1) * size;
+            }
+        }
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+    else if (size == 16)
+    {
+        for (int i = 0; i < 64; ++i)
+        {
+            if (blocks_16[i] != -1)
+            {
+                blocks_16[i] = -1;
+                return i * size;
+            }
+        }
+        for (int i = 0; i < 32; ++i)
+        {
+            if (blocks_32[i] != -1)
+            {
+                blocks_16[2 * i + 1] = (2 * i + 1) * size;
+                blocks_32[i] = -1;
+                return (2 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 16; ++i)
+        {
+            if (blocks_64[i] != -1)
+            {
+                blocks_16[4 * i + 1] = (4 * i + 1) * size;
+                blocks_32[2 * i + 1] = (2 * i + 1) * 2 * size;
+                blocks_64[i] = -1;
+                return (4 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 8; ++i)
+        {
+            if (blocks_128[i] != -1)
+            {
+                blocks_16[8 * i + 1] = (8 * i + 1) * size;
+                blocks_32[4 * i + 1] = (4 * i + 1) * 2 * size;
+                blocks_64[2 * i + 1] = (2 * i + 1) * 4 * size;
+                blocks_128[i] = -1;
+                return (8 * i) * size;
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            if (blocks_256[i] != -1)
+            {
+                blocks_16[16 * i + 1] = (16 * i + 1) * size;
+                blocks_32[8 * i + 1] = (8 * i + 1) * 2 * size;
+                blocks_64[4 * i + 1] = (4 * i + 1) * 4 * size;
+                blocks_128[2 * i + 1] = (2 * i + 1) * 8 * size;
+                blocks_256[i] = -1;
+                return (16 * 1) * size;
+            }
+        }
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+    else if (size == 32)
+    {
+
+        for (int i = 0; i < 32; ++i)
+        {
+            if (blocks_32[i] != -1)
+            {
+                blocks_32[i] = -1;
+                return i * size;
+            }
+        }
+
+        for (int i = 0; i < 16; ++i)
+        {
+            if (blocks_64[i] != -1)
+            {
+                blocks_32[2 * i + 1] = (2 * i + 1) * size;
+                blocks_64[i] = -1;
+                return (2 * i) * size;
+            }
+        }
+
+        for (int i = 0; i < 8; ++i)
+        {
+            if (blocks_128[i] != -1)
+            {
+                blocks_64[2 * i + 1] = (2 * i + 1) * 2 * size;
+                blocks_32[4 * i + 1] = (4 * i + 1) * size;
+                blocks_128[i] = -1;
+                return (4 * i) * size;
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            if (blocks_256[i] != -1)
+            {
+                blocks_128[2 * i + 1] = (2 * i + 1) * 4 * size;
+                blocks_64[4 * i + 1] = (4 * i + 1) * 2 * size;
+                blocks_32[8 * i + 1] = (8 * i + 1) * size;
+                blocks_256[i] = -1;
+                return (8 * i) * size;
+            }
+        }
+
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+    else if (size == 64)
+    {
+
+        for (int i = 0; i < 16; ++i)
+        {
+            if (blocks_64[i] != -1)
+            {
+
+                blocks_64[i] = -1;
+                return (i)*size;
+            }
+        }
+        for (int i = 0; i < 8; ++i)
+        {
+            if (blocks_128[i] != -1)
+            {
+
+                blocks_64[2 * i + 1] = (2 * i + 1) * size;
+                blocks_128[i] = -1;
+                return (2 * i) * size;
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            if (blocks_256[i] != -1)
+            {
+
+                blocks_128[2 * i + 1] = (2 * i + 1) * 2 * size;
+                blocks_64[4 * i + 1] = (4 * i + 1) * size;
+                blocks_256[i] = -1;
+                return (4 * i) * size;
+            }
+        }
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+    else if (size == 128)
+    {
+
+        for (int i = 0; i < 8; ++i)
+        {
+
+            if (blocks_128[i] != -1)
+            {
+                blocks_128[i] = -1;
+                return (i)*size;
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+
+            if (blocks_256[i] != -1)
+            {
+                blocks_128[2 * i + 1] = (2 * i + 1) * size;
+                blocks_256[i] = -1;
+                return (2 * i) * size;
+            }
+        }
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+    else if (size == 256)
+    {
+
+        for (int i = 0; i < 4; ++i)
+        {
+
+            if (blocks_256[i] != -1)
+            {
+                blocks_256[i] = -1;
+                return (i)*size;
+            }
+        }
+        printf("\n\n Warning! Not enough space in memory for this process\n");
+    }
+}
+
+void DeAllocate_memory(int address, int size)
+{
+    int ratio = address / size;
+    switch (size)
+    {
+    case 1:
+        blocks_1[ratio] = address;
+        break;
+
+    case 2:
+        blocks_2[ratio] = address;
+        break;
+
+    case 4:
+        blocks_4[ratio] = address;
+        break;
+
+    case 8:
+        blocks_8[ratio] = address;
+        break;
+
+    case 16:
+        blocks_16[ratio] = address;
+        break;
+
+    case 32:
+        blocks_32[ratio] = address;
+        break;
+
+    case 64:
+        blocks_64[ratio] = address;
+        break;
+
+    case 128:
+        blocks_128[ratio] = address;
+        break;
+
+    case 256:
+        blocks_256[ratio] = address;
+        break;
+    }
+
+    printf("\nMemory Blocks of 256: \n");
+    for (int i = 0; i < 4; ++i)
+        printf("%d\t", blocks_256[i]);
+
+    printf("\nMemory Blocks of 128:\n");
+    for (int i = 0; i < 8; ++i)
+        printf("%d\t", blocks_128[i]);
+
+    printf("\nMemory Blocks of 64:\n");
+    for (int i = 0; i < 16; ++i)
+        printf("%d\t", blocks_64[i]);
+
+    // printf("\nMemory Blocks of 32:\n");
+    // for (int i = 0; i < 32; ++i)
+    //     printf("%d\t", blocks_32[i]);
+    // printf("\nMemory Blocks of 16:\n");
+    // for (int i = 0; i < 64; ++i)
+    //     printf("%d\t", blocks_16[i]);
+    // printf("\nMemory Blocks of 8:\n");
+    // for (int i = 0; i < 128; ++i)
+    //     printf("%d\t", blocks_8[i]);
+    // printf("\nMemory Blocks of 4:\n");
+    // for (int i = 0; i < 256; ++i)
+    //     printf("%d\t", blocks_4[i]);
+    // printf("\nMemory Blocks of 2:\n");
+    // for (int i = 0; i < 512; ++i)
+    //     printf("%d\t", blocks_2[i]);
+    // printf("\nMemory Blocks of 1:\n");
+    // for (int i = 0; i < 1024; ++i)
+    //     printf("%d\t", blocks_1[i]);
+
+    printf("\n\n");
+
+    Merge(address, size);
+
+    printf("\nMemory Blocks of 256: \n");
+    for (int i = 0; i < 4; ++i)
+        printf("%d\t", blocks_256[i]);
+
+    printf("\nMemory Blocks of 128:\n");
+    for (int i = 0; i < 8; ++i)
+        printf("%d\t", blocks_128[i]);
+
+    printf("\nMemory Blocks of 64:\n");
+    for (int i = 0; i < 16; ++i)
+        printf("%d\t", blocks_64[i]);
+
+    // printf("\nMemory Blocks of 32:\n");
+    // for (int i = 0; i < 32; ++i)
+    //     printf("%d\t", blocks_32[i]);
+    // printf("\nMemory Blocks of 16:\n");
+    // for (int i = 0; i < 64; ++i)
+    //     printf("%d\t", blocks_16[i]);
+    // printf("\nMemory Blocks of 8:\n");
+    // for (int i = 0; i < 128; ++i)
+    //     printf("%d\t", blocks_8[i]);
+    // printf("\nMemory Blocks of 4:\n");
+    // for (int i = 0; i < 256; ++i)
+    //     printf("%d\t", blocks_4[i]);
+    // printf("\nMemory Blocks of 2:\n");
+    // for (int i = 0; i < 512; ++i)
+    //     printf("%d\t", blocks_2[i]);
+    // printf("\nMemory Blocks of 1:\n");
+    // for (int i = 0; i < 1024; ++i)
+    //     printf("%d\t", blocks_1[i]);
+
+    printf("\n\n");
+}
+
+void Merge(int address, int size)
+{
+    //Implementation of merging memory blocks goes here
+    switch (size)
+    {
+        case 1:
+        for (int i = 0; i < 1024; i += 2)
+        {
+            if (blocks_1[i] != -1 && blocks_1[i + 1] != -1)
+            {
+                blocks_2[i / 2] = 2*i * size;
+                blocks_1[i] = -1;
+                blocks_1[i + 1] = -1;
+                printf("\nmemory 1 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 512; i += 2)
+        {
+            if (blocks_2[i] != -1 && blocks_2[i + 1] != -1)
+            {
+                blocks_4[i / 2] = 2*i * size;
+                blocks_2[i] = -1;
+                blocks_2[i + 1] = -1;
+                printf("\nmemory 2 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 256; i += 2)
+        {
+            if (blocks_4[i] != -1 && blocks_4[i + 1] != -1)
+            {
+                blocks_8[i / 2] = 4*i * size;
+                blocks_4[i] = -1;
+                blocks_4[i + 1] = -1;
+                printf("\nmemory 4 merged successfully\n");
+            }
+        }
+    for (int i = 0; i < 128; i += 2)
+        {
+            if (blocks_8[i] != -1 && blocks_8[i + 1] != -1)
+            {
+                blocks_16[i / 2] = 8*i * size;
+                blocks_8[i] = -1;
+                blocks_8[i + 1] = -1;
+                printf("\nmemory 8 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 64; i += 2)
+        {
+            if (blocks_16[i] != -1 && blocks_16[i + 1] != -1)
+            {
+                blocks_32[i / 2] = 16*i * size;
+                blocks_16[i] = -1;
+                blocks_16[i + 1] = -1;
+                printf("\nmemory 16 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 32; i += 2)
+        {
+            if (blocks_32[i] != -1 && blocks_32[i + 1] != -1)
+            {
+                blocks_64[i / 2] = 32* i * size;
+                blocks_32[i] = -1;
+                blocks_32[i + 1] = -1;
+                printf("\nmemory 32 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 16; i += 2)
+        {
+            if (blocks_64[i] != -1 && blocks_64[i + 1] != -1)
+            {
+                blocks_128[i / 2] = 64 * i * size;
+                blocks_64[i] = -1;
+                blocks_64[i + 1] = -1;
+                printf("\nmemory 64 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 8; i += 2)
+        {
+            if (blocks_128[i] != -1 && blocks_128[i + 1] != -1)
+            {
+                blocks_256[i / 2] = 128 * i * size;
+                blocks_128[i] = -1;
+                blocks_128[i + 1] = -1;
+                printf("\nmemory 128 merged successfully\n");
+            }
+        }
+        break;
+        
+        case 2:
+        for (int i = 0; i < 512; i += 2)
+        {
+            if (blocks_2[i] != -1 && blocks_2[i + 1] != -1)
+            {
+                blocks_4[i / 2] = i * size;
+                blocks_2[i] = -1;
+                blocks_2[i + 1] = -1;
+                printf("\nmemory 4 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 256; i += 2)
+        {
+            if (blocks_4[i] != -1 && blocks_4[i + 1] != -1)
+            {
+                blocks_8[i / 2] = 2*i * size;
+                blocks_4[i] = -1;
+                blocks_4[i + 1] = -1;
+                printf("\nmemory 4 merged successfully\n");
+            }
+        }
+    for (int i = 0; i < 128; i += 2)
+        {
+            if (blocks_8[i] != -1 && blocks_8[i + 1] != -1)
+            {
+                blocks_16[i / 2] = 4*i * size;
+                blocks_8[i] = -1;
+                blocks_8[i + 1] = -1;
+                printf("\nmemory 8 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 64; i += 2)
+        {
+            if (blocks_16[i] != -1 && blocks_16[i + 1] != -1)
+            {
+                blocks_32[i / 2] = 8*i * size;
+                blocks_16[i] = -1;
+                blocks_16[i + 1] = -1;
+                printf("\nmemory 16 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 32; i += 2)
+        {
+            if (blocks_32[i] != -1 && blocks_32[i + 1] != -1)
+            {
+                blocks_64[i / 2] = 16* i * size;
+                blocks_32[i] = -1;
+                blocks_32[i + 1] = -1;
+                printf("\nmemory 32 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 16; i += 2)
+        {
+            if (blocks_64[i] != -1 && blocks_64[i + 1] != -1)
+            {
+                blocks_128[i / 2] = 32 * i * size;
+                blocks_64[i] = -1;
+                blocks_64[i + 1] = -1;
+                printf("\nmemory 64 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 8; i += 2)
+        {
+            if (blocks_128[i] != -1 && blocks_128[i + 1] != -1)
+            {
+                blocks_256[i / 2] = 64 * i * size;
+                blocks_128[i] = -1;
+                blocks_128[i + 1] = -1;
+                printf("\nmemory 128 merged successfully\n");
+            }
+        }
+        break;
+        case 4:
+        for (int i = 0; i < 256; i += 2)
+        {
+            if (blocks_4[i] != -1 && blocks_4[i + 1] != -1)
+            {
+                blocks_8[i / 2] = i * size;
+                blocks_4[i] = -1;
+                blocks_4[i + 1] = -1;
+                printf("\nmemory 4 merged successfully\n");
+            }
+        }
+    for (int i = 0; i < 128; i += 2)
+        {
+            if (blocks_8[i] != -1 && blocks_8[i + 1] != -1)
+            {
+                blocks_16[i / 2] = 2*i * size;
+                blocks_8[i] = -1;
+                blocks_8[i + 1] = -1;
+                printf("\nmemory 8 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 64; i += 2)
+        {
+            if (blocks_16[i] != -1 && blocks_16[i + 1] != -1)
+            {
+                blocks_32[i / 2] = 4*i * size;
+                blocks_16[i] = -1;
+                blocks_16[i + 1] = -1;
+                printf("\nmemory 16 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 32; i += 2)
+        {
+            if (blocks_32[i] != -1 && blocks_32[i + 1] != -1)
+            {
+                blocks_64[i / 2] = 8* i * size;
+                blocks_32[i] = -1;
+                blocks_32[i + 1] = -1;
+                printf("\nmemory 32 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 16; i += 2)
+        {
+            if (blocks_64[i] != -1 && blocks_64[i + 1] != -1)
+            {
+                blocks_128[i / 2] = 16 * i * size;
+                blocks_64[i] = -1;
+                blocks_64[i + 1] = -1;
+                printf("\nmemory 64 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 8; i += 2)
+        {
+            if (blocks_128[i] != -1 && blocks_128[i + 1] != -1)
+            {
+                blocks_256[i / 2] = 32 * i * size;
+                blocks_128[i] = -1;
+                blocks_128[i + 1] = -1;
+                printf("\nmemory 128 merged successfully\n");
+            }
+        }
+        break;
+    case 8:
+    for (int i = 0; i < 128; i += 2)
+        {
+            if (blocks_8[i] != -1 && blocks_8[i + 1] != -1)
+            {
+                blocks_16[i / 2] = i * size;
+                blocks_8[i] = -1;
+                blocks_8[i + 1] = -1;
+                printf("\nmemory 8 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 64; i += 2)
+        {
+            if (blocks_16[i] != -1 && blocks_16[i + 1] != -1)
+            {
+                blocks_32[i / 2] = 2*i * size;
+                blocks_16[i] = -1;
+                blocks_16[i + 1] = -1;
+                printf("\nmemory 16 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 32; i += 2)
+        {
+            if (blocks_32[i] != -1 && blocks_32[i + 1] != -1)
+            {
+                blocks_64[i / 2] = 4* i * size;
+                blocks_32[i] = -1;
+                blocks_32[i + 1] = -1;
+                printf("\nmemory 32 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 16; i += 2)
+        {
+            if (blocks_64[i] != -1 && blocks_64[i + 1] != -1)
+            {
+                blocks_128[i / 2] = 8 * i * size;
+                blocks_64[i] = -1;
+                blocks_64[i + 1] = -1;
+                printf("\nmemory 64 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 8; i += 2)
+        {
+            if (blocks_128[i] != -1 && blocks_128[i + 1] != -1)
+            {
+                blocks_256[i / 2] = 16 * i * size;
+                blocks_128[i] = -1;
+                blocks_128[i + 1] = -1;
+                printf("\nmemory 128 merged successfully\n");
+            }
+        }
+        break;
+    case 16:
+        for (int i = 0; i < 64; i += 2)
+        {
+            if (blocks_16[i] != -1 && blocks_16[i + 1] != -1)
+            {
+                blocks_32[i / 2] = i * size;
+                blocks_16[i] = -1;
+                blocks_16[i + 1] = -1;
+                printf("\nmemory 16 merged successfully\n");
+            }
+        }
+        for (int i = 0; i < 32; i += 2)
+        {
+            if (blocks_32[i] != -1 && blocks_32[i + 1] != -1)
+            {
+                blocks_64[i / 2] = 2* i * size;
+                blocks_32[i] = -1;
+                blocks_32[i + 1] = -1;
+                printf("\nmemory 32 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 16; i += 2)
+        {
+            if (blocks_64[i] != -1 && blocks_64[i + 1] != -1)
+            {
+                blocks_128[i / 2] = 4 * i * size;
+                blocks_64[i] = -1;
+                blocks_64[i + 1] = -1;
+                printf("\nmemory 64 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 8; i += 2)
+        {
+            if (blocks_128[i] != -1 && blocks_128[i + 1] != -1)
+            {
+                blocks_256[i / 2] = 8 * i * size;
+                blocks_128[i] = -1;
+                blocks_128[i + 1] = -1;
+                printf("\nmemory 128 merged successfully\n");
+            }
+        }
+        break;
+    case 32:
+        for (int i = 0; i < 32; i += 2)
+        {
+            if (blocks_32[i] != -1 && blocks_32[i + 1] != -1)
+            {
+                blocks_64[i / 2] = i * size;
+                blocks_32[i] = -1;
+                blocks_32[i + 1] = -1;
+                printf("\nmemory 32 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 16; i += 2)
+        {
+            if (blocks_64[i] != -1 && blocks_64[i + 1] != -1)
+            {
+                blocks_128[i / 2] = 2 * i * size;
+                blocks_64[i] = -1;
+                blocks_64[i + 1] = -1;
+                printf("\nmemory 64 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 8; i += 2)
+        {
+            if (blocks_128[i] != -1 && blocks_128[i + 1] != -1)
+            {
+                blocks_256[i / 2] = 4 * i * size;
+                blocks_128[i] = -1;
+                blocks_128[i + 1] = -1;
+                printf("\nmemory 128 merged successfully\n");
+            }
+        }
+        break;
+
+    case 64:
+        for (int i = 0; i < 16; i += 2)
+        {
+            if (blocks_64[i] != -1 && blocks_64[i + 1] != -1)
+            {
+                blocks_128[i / 2] = i * size;
+                blocks_64[i] = -1;
+                blocks_64[i + 1] = -1;
+                printf("\nmemory 64 merged successfully\n");
+            }
+        }
+
+        for (int i = 0; i < 8; i += 2)
+        {
+            if (blocks_128[i] != -1 && blocks_128[i + 1] != -1)
+            {
+                blocks_256[i / 2] = 2 * i * size;
+                blocks_128[i] = -1;
+                blocks_128[i + 1] = -1;
+                printf("\nmemory 128 merged successfully\n");
+            }
+        }
+
+        break;
+
+    case 128:
+        for (int i = 0; i < 8; i += 2)
+        {
+            if (blocks_128[i] != -1 && blocks_128[i + 1] != -1)
+            {
+                blocks_256[i / 2] = i * size;
+                blocks_128[i] = -1;
+                blocks_128[i + 1] = -1;
+                printf("\nmemory 128 merged successfully\n");
+            }
+        }
+        break;
+    }
+}
+/*
 int Allocate_memory(int size)
 {
     switch (size)
@@ -959,3 +2031,5 @@ void Merge(int address, int size)
     }
 
 }
+
+*/
